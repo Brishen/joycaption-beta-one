@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "joycaption-beta-one"
+name = "joycaption_beta_one"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -23,7 +23,4 @@ dependencies = [
 ]
 
 [project.scripts]
-train-accelerate = "finetuning.train_accelerate:main"
-
-[tool.hatch.build]
-packages = ["src/finetuning"]
+train-accelerate = "joycaption_beta_one.finetuning.train_accelerate:main"
