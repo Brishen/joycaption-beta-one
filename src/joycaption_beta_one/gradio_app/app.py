@@ -17,6 +17,8 @@ from importlib import metadata
 import platform
 from textwrap import indent
 import sys
+import socket
+import time
 from peft import PeftModel
 
 
@@ -825,7 +827,18 @@ with gr.Blocks() as demo:
 
 def main():
 	print_system_info()
-	demo.launch()
+	_, local_url, _ = demo.launch(server_name="0.0.0.0", prevent_thread_lock=True)
+	if local_url:
+		port = local_url.split(':')[-1].rstrip('/')
+		hostname = socket.gethostname()
+		print(f"\nINFO: Gradio app is running on: http://{hostname}:{port}\n")
+
+	try:
+		while True:
+			time.sleep(0.5)
+	except KeyboardInterrupt:
+		print("\nStopping Gradio app...")
+		demo.close()
 
 
 if __name__ == "__main__":
