@@ -17,6 +17,7 @@ from importlib import metadata
 import platform
 from textwrap import indent
 import sys
+from peft import PeftModel
 
 
 
@@ -248,8 +249,9 @@ NAME_OPTION = "If there is a person/character in the image you must refer to the
 
 
 g_processor = None
-g_model: LlavaForConditionalGeneration | None = None
+g_model: LlavaForConditionalGeneration | PeftModel | None = None
 g_quant: str | None = None
+g_lora_path: str | None = None
 
 def format_error(message: str) -> str:
 	"""Format an error message for display in the UI."""
@@ -269,9 +271,9 @@ def show_global_error(message: str):
 def hide_global_error():
 	return gr.update(value="", visible=False)
 
-def load_model(quant: str, status: gr.HTML | None = None):
+def load_model(quant: str, lora_path: str, status: gr.HTML | None = None):
 	"""Load the model and processor if not already loaded."""
-	global g_processor, g_model, g_quant
+	global g_processor, g_model, g_quant, g_lora_path
 	if g_processor is None:
 		print("Loading processor...")
 		if status is not None:
@@ -289,7 +291,7 @@ def load_model(quant: str, status: gr.HTML | None = None):
 			yield {global_error: show_global_error("Critical error: Model processor could not be loaded")}
 			return
 	
-	if g_model is None or g_quant != quant:
+	if g_model is None or g_quant != quant or g_lora_path != lora_path:
 		print("Loading model...")
 		if status is not None:
 			yield {status: format_info("Loading model weights...")}
@@ -302,9 +304,9 @@ def load_model(quant: str, status: gr.HTML | None = None):
 
 		try:
 			if quant == "bf16":
-				g_model = LlavaForConditionalGeneration.from_pretrained(MODEL_PATH, torch_dtype="bfloat16", device_map=0)
-				assert isinstance(g_model, LlavaForConditionalGeneration), f"Expected LlavaForConditionalGeneration, got {type(g_model)}"
-				apply_liger_kernel_to_llama(model=g_model.language_model)  # Meow
+				base_model = LlavaForConditionalGeneration.from_pretrained(MODEL_PATH, torch_dtype="bfloat16", device_map=0)
+				assert isinstance(base_model, LlavaForConditionalGeneration), f"Expected LlavaForConditionalGeneration, got {type(base_model)}"
+				apply_liger_kernel_to_llama(model=base_model.language_model)  # Meow
 			else:
 				from transformers import BitsAndBytesConfig
 				if quant == "8bit":
@@ -323,11 +325,22 @@ def load_model(quant: str, status: gr.HTML | None = None):
 				else:
 					raise ValueError(f"Unknown quantization type: {quant}")
 				
-				g_model = LlavaForConditionalGeneration.from_pretrained(MODEL_PATH, torch_dtype="auto", device_map=0, quantization_config=qnt_config)
-				assert isinstance(g_model, LlavaForConditionalGeneration), f"Expected LlavaForConditionalGeneration, got {type(g_model)}"
+				base_model = LlavaForConditionalGeneration.from_pretrained(MODEL_PATH, torch_dtype="auto", device_map=0, quantization_config=qnt_config)
+				assert isinstance(base_model, LlavaForConditionalGeneration), f"Expected LlavaForConditionalGeneration, got {type(base_model)}"
 
+			if lora_path:
+				lora_path = lora_path.strip()
+				if lora_path:
+					print(f"Applying LoRA from {lora_path}...")
+					if status is not None:
+						yield {status: format_info(f"Applying LoRA from {lora_path}...")}
+					base_model = PeftModel.from_pretrained(base_model, lora_path)
+					print("LoRA applied.")
+
+			g_model = base_model
 			g_model.eval()
 			g_quant = quant
+			g_lora_path = lora_path
 			# Hide any global error when model loads successfully
 			yield {global_error: hide_global_error()}
 		except Exception as e:
@@ -408,7 +421,7 @@ def print_system_info():
 
 
 @torch.no_grad()
-def chat_joycaption(input_image: Image.Image, prompt: str, temperature: float, top_p: float, max_new_tokens: int, quant: str) -> Generator[dict, None, None]:
+def chat_joycaption(input_image: Image.Image, prompt: str, temperature: float, top_p: float, max_new_tokens: int, quant: str, lora_path: str) -> Generator[dict, None, None]:
 	# Hide any previous global errors
 	yield {global_error: hide_global_error()}
 
@@ -416,7 +429,7 @@ def chat_joycaption(input_image: Image.Image, prompt: str, temperature: float, t
 		yield {single_status_output: format_error("No image selected for captioning. Please upload an image."), output_caption_single: None}
 		return
 	
-	yield from load_model(quant=quant, status=single_status_output)
+	yield from load_model(quant=quant, lora_path=lora_path, status=single_status_output)
 	gc.collect()
 	torch.cuda.empty_cache()
 
@@ -497,6 +510,7 @@ def process_batch_files(
 	num_workers: int,
 	batch_size: int,
 	quant: str,
+	lora_path: str,
 	progress = gr.Progress(track_tqdm=True),
 ) -> Generator[dict, None, None]:
 	# Hide any previous global errors
@@ -506,7 +520,7 @@ def process_batch_files(
 		yield {batch_status_output: format_error("No files selected for batch processing. Please upload one or more image files."), batch_zip_output: None}
 		return
 	
-	yield from load_model(quant=quant, status=batch_status_output)
+	yield from load_model(quant=quant, lora_path=lora_path, status=batch_status_output)
 	gc.collect()
 	torch.cuda.empty_cache()
 
@@ -645,6 +659,11 @@ with gr.Blocks() as demo:
 				value="bf16",
 				label="Model Quantization",
 				info="Model quantization level (bf16=highest quality, 8bit/nf4=lower memory)",
+			)
+			lora_path_input = gr.Textbox(
+				label="LoRA Path (optional)",
+				placeholder="/path/to/your/lora",
+				info="Path to a LoRA adapter to apply to the model.",
 			)
 		
 		with gr.Column(scale=3):
@@ -792,14 +811,14 @@ with gr.Blocks() as demo:
 	# Handle single image captioning
 	run_button_single.click(
 		chat_joycaption,
-		inputs=[input_image_single, prompt_box_single, temperature_slider, top_p_slider, max_tokens_slider, model_quantization],
+		inputs=[input_image_single, prompt_box_single, temperature_slider, top_p_slider, max_tokens_slider, model_quantization, lora_path_input],
 		outputs=[single_status_output, output_caption_single, global_error],
 	)
 
 	# Handle batch processing
 	run_button_batch.click(
 		process_batch_files,
-		inputs=[input_files_batch, caption_type, caption_length, extra_options, name_input, temperature_slider, top_p_slider, max_tokens_slider, num_workers_slider, batch_size_slider, model_quantization],
+		inputs=[input_files_batch, caption_type, caption_length, extra_options, name_input, temperature_slider, top_p_slider, max_tokens_slider, num_workers_slider, batch_size_slider, model_quantization, lora_path_input],
 		outputs=[batch_status_output, batch_zip_output, global_error],
 	)
 
