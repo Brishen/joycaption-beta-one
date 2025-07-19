@@ -25,5 +25,5 @@ dependencies = [
 [project.scripts]
 train-accelerate = "finetuning.train_accelerate:main"
 
-[tool.hatch.build.targets.wheel]
+[tool.hatch.build]
 packages = ["src/finetuning"]
