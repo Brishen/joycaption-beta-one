@@ -39,8 +39,6 @@ class Config:
     learning_rate: float = 5e-5
     warmup_samples: int = 0
     max_samples: int = 400000
-    save_every: int = 50000
-    test_every: int = 50000
     grad_scaler: bool = False
     lr_scheduler_type: str = "cosine"
     min_lr_ratio: float = 0.0
@@ -147,7 +145,7 @@ def build_datasets_and_loaders(config, tokenizer, model_config, accelerator):
     test_ds = ImageDataset(test_ex, tokenizer, model_config.image_token_index, model_config.image_seq_length)
     train_loader = DataLoader(train_ds, batch_size=config.device_batch_size, shuffle=True, num_workers=config.num_workers, pin_memory=True, collate_fn=train_ds.collate_fn)
     test_loader = DataLoader(test_ds, batch_size=config.device_batch_size, shuffle=False, num_workers=config.num_workers, pin_memory=True, collate_fn=test_ds.collate_fn)
-    return train_loader, test_loader
+    return train_loader, test_loader, len(train_ds)
 
 class Trainer:
     def __init__(self, config, accelerator, logger):
@@ -165,15 +163,18 @@ class Trainer:
         # optimizer
         optim_params = [p for p in model.parameters() if p.requires_grad]
         self.optimizer = torch.optim.AdamW(optim_params, lr=config.learning_rate, betas=(config.adam_beta1, config.adam_beta2), eps=config.adam_eps, weight_decay=config.adam_weight_decay)
+        # datasets
+        train_loader, test_loader, train_set_size = build_datasets_and_loaders(config, tokenizer, model.config, accelerator)
         # scheduler steps
-        total_steps = config.max_samples // config.batch_size
+        self.num_epochs = math.ceil(config.max_samples / train_set_size)
+        grad_accum_steps = config.batch_size // (config.device_batch_size * accelerator.num_processes)
+        steps_per_epoch = len(train_loader) // grad_accum_steps
+        total_steps = self.num_epochs * steps_per_epoch
         num_warmup = math.ceil(config.warmup_samples / config.batch_size)
         if config.lr_scheduler_type == "cosine":
             self.lr_scheduler = get_cosine_schedule_with_warmup(self.optimizer, num_warmup_steps=num_warmup, num_training_steps=total_steps, min_lr_ratio=config.min_lr_ratio)
         else:
             self.lr_scheduler = get_scheduler(config.lr_scheduler_type, self.optimizer, num_warmup_steps=num_warmup, num_training_steps=total_steps)
-        # datasets
-        train_loader, test_loader = build_datasets_and_loaders(config, tokenizer, model.config, accelerator)
         # prepare with accelerate
         self.model, self.optimizer, train_loader, test_loader, self.lr_scheduler = accelerator.prepare(self.model, self.optimizer, train_loader, test_loader, self.lr_scheduler)
         self.train_loader, self.test_loader = train_loader, test_loader
@@ -199,22 +200,27 @@ class Trainer:
         self.logger.info("Starting training...")
         if wandb.run:
             wandb.watch(self.model)
-        for step, batch in enumerate(tqdm(self.train_loader, desc="train")):
-            with self.accelerator.accumulate(self.model):
-                loss = self.run_model(batch)
-                self.accelerator.backward(loss)
-                if self.accelerator.sync_gradients:
-                    if self.config.clip_grad_norm:
-                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.clip_grad_norm)
-                    self.optimizer.step()
-                    self.lr_scheduler.step()
-                    self.optimizer.zero_grad()
-                    self.global_steps += 1
-                    self.global_samples += self.config.device_batch_size * self.accelerator.num_processes
-                    if self.global_steps % (self.config.save_every // self.config.batch_size) == 0:
-                        self.accelerator.save_state(self.config.output_dir)
-                    if self.global_steps % (self.config.test_every // self.config.batch_size) == 0:
-                        self.validate()
+        
+        self.logger.info(f"Training for {self.num_epochs} epochs.")
+
+        for epoch in range(self.num_epochs):
+            self.logger.info(f"Starting epoch {epoch+1}/{self.num_epochs}")
+            for step, batch in enumerate(tqdm(self.train_loader, desc=f"train epoch {epoch+1}")):
+                with self.accelerator.accumulate(self.model):
+                    loss = self.run_model(batch)
+                    self.accelerator.backward(loss)
+                    if self.accelerator.sync_gradients:
+                        if self.config.clip_grad_norm:
+                            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.config.clip_grad_norm)
+                        self.optimizer.step()
+                        self.lr_scheduler.step()
+                        self.optimizer.zero_grad()
+                        self.global_steps += 1
+                        self.global_samples += self.config.device_batch_size * self.accelerator.num_processes
+
+            self.logger.info(f"Epoch {epoch+1} finished. Saving checkpoint.")
+            self.accelerator.save_state(self.config.output_dir / f"epoch_{epoch+1}")
+            self.validate()
 
     @torch.no_grad()
     def validate(self):
@@ -250,8 +256,6 @@ def run_training(config: Config):
 @click.option('--learning-rate', default=5e-5, type=float, help="Learning rate.")
 @click.option('--warmup-samples', default=0, type=int, help="Number of warmup samples.")
 @click.option('--max-samples', default=400000, type=int, help="Maximum number of samples to train on.")
-@click.option('--save-every', default=50000, type=int, help="Save checkpoint every N samples.")
-@click.option('--test-every', default=50000, type=int, help="Run validation every N samples.")
 @click.option('--grad-scaler', is_flag=True, default=False, help="Use gradient scaler.")
 @click.option('--lr-scheduler-type', default="cosine", type=str, help="Learning rate scheduler type.")
 @click.option('--min-lr-ratio', default=0.0, type=float, help="Minimum learning rate ratio for cosine scheduler.")
