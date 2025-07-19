@@ -114,7 +114,15 @@ class ImageDataset(Dataset):
 
 def build_datasets_and_loaders(config, tokenizer, model_config, accelerator):
     # load and preprocess data
-    if Path(config.dataset).suffix == ".parquet":
+    dataset_path = Path(config.dataset)
+    is_parquet = False
+    if dataset_path.is_file():
+        with open(dataset_path, 'rb') as f:
+            # Check for parquet magic bytes
+            if f.read(4) == b'PAR1':
+                is_parquet = True
+
+    if is_parquet:
         tqdm.write("Loading preprocessed data from parquet file...")
         table = pq.read_table(config.dataset)
         data = table.to_pylist()
