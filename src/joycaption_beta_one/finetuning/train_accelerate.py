@@ -219,6 +219,8 @@ class Trainer:
         for epoch in range(self.num_epochs):
             self.logger.info(f"Starting epoch {epoch+1}/{self.num_epochs}")
             for step, batch in enumerate(self.train_loader):
+                if self.global_steps >= self.total_steps:
+                    break
                 with self.accelerator.accumulate(self.model):
                     loss = self.run_model(batch)
                     self.accelerator.backward(loss)
@@ -239,6 +241,8 @@ class Trainer:
             unwrapped_model.save_pretrained(save_path)
             self.tokenizer.save_pretrained(save_path)
             self.validate()
+            if self.global_steps >= self.total_steps:
+                break
 
     @torch.no_grad()
     def validate(self):
