@@ -6,6 +6,7 @@ from typing import Optional
 import math
 import random
 import json
+import io
 
 import torch
 import torch.nn as nn
@@ -19,6 +20,8 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 import wandb
 import omegaconf
 import click
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast, LlavaForConditionalGeneration, get_scheduler
 from peft import LoraConfig, get_peft_model, TaskType
@@ -112,42 +115,43 @@ class ImageDataset(Dataset):
 
 def build_datasets_and_loaders(config, tokenizer, model_config, accelerator):
     # load and preprocess data
-    data = json.loads(Path(config.dataset).read_text())
-    for ex in data:
-        ex['messages'] = [{**m, 'content': m['content'].replace('<image>', '').strip()} for m in ex['messages']]
-
-    cache_dir = None
-    done_file = None
+    cache_file = None
     if config.cache_preprocessed_images:
         cache_dir = config.images_path / ".cache"
         cache_dir.mkdir(exist_ok=True)
-        done_file = cache_dir / ".preprocessed_done"
+        cache_file = cache_dir / "preprocessed.parquet"
 
-    if done_file and done_file.exists():
-        for ex in tqdm(data, desc="Loading cached preprocessed images"):
-            image_filename = ex['images'][0]
-            cached_image_path = cache_dir / f"{Path(image_filename).stem}.pt"
-            ex['pixel_values'] = torch.load(cached_image_path)
+    if cache_file and cache_file.exists():
+        tqdm.write("Loading cached preprocessed data from parquet file...")
+        table = pq.read_table(cache_file)
+        data = table.to_pylist()
+        for ex in tqdm(data, desc="Deserializing tensors"):
+            buffer = io.BytesIO(ex['pixel_values'])
+            ex['pixel_values'] = torch.load(buffer)
     else:
+        data = json.loads(Path(config.dataset).read_text())
+        for ex in data:
+            ex['messages'] = [{**m, 'content': m['content'].replace('<image>', '').strip()} for m in ex['messages']]
+
         for ex in tqdm(data, desc="Preprocessing images"):
             image_filename = ex['images'][0]
-            cached_image_path = None
-            if cache_dir:
-                cached_image_path = cache_dir / f"{Path(image_filename).stem}.pt"
-                if cached_image_path.exists():
-                    ex['pixel_values'] = torch.load(cached_image_path)
-                    continue
-
             img = Image.open(config.images_path / image_filename).convert('RGB')
             if img.size != (384, 384): img = img.resize((384, 384), Image.LANCZOS)
             pixel_values = TVF.pil_to_tensor(img)
             ex['pixel_values'] = pixel_values
-            
-            if cached_image_path:
-                torch.save(pixel_values, cached_image_path)
         
-        if done_file:
-            done_file.touch()
+        if cache_file:
+            tqdm.write("Saving preprocessed data to parquet file...")
+            data_to_save = []
+            for ex in tqdm(data, desc="Serializing tensors"):
+                new_ex = ex.copy()
+                buffer = io.BytesIO()
+                torch.save(new_ex['pixel_values'], buffer)
+                new_ex['pixel_values'] = buffer.getvalue()
+                data_to_save.append(new_ex)
+            
+            table = pa.Table.from_pylist(data_to_save)
+            pq.write_table(table, cache_file)
 
     random.shuffle(data)
     test_ex, train_ex = data[:config.test_size], data[config.test_size:]
