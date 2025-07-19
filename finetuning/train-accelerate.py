@@ -22,7 +22,7 @@ import click
 
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast, LlavaForConditionalGeneration, get_scheduler
 from peft import LoraConfig, get_peft_model, TaskType
-from utils import get_cosine_schedule_with_warmup, temprngstate, log_rank_0
+from .utils import get_cosine_schedule_with_warmup, temprngstate, log_rank_0
 from accelerate import Accelerator
 
 DTYPE_MAP = {'float16': torch.float16, 'float32': torch.float32, 'bfloat16': torch.bfloat16}
