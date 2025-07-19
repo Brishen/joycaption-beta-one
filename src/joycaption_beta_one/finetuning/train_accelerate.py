@@ -58,6 +58,7 @@ class Config:
     grad_scaler_init: float = 2**16
     text_model_dtype: str = "bfloat16"
     pre_test: bool = True
+    cache_preprocessed_images: bool = False
     lora_r: int = 64
     lora_alpha: int = 64
     lora_dropout: float = 0.0
@@ -114,10 +115,29 @@ def build_datasets_and_loaders(config, tokenizer, model_config, accelerator):
     data = json.loads(Path(config.dataset).read_text())
     for ex in data:
         ex['messages'] = [{**m, 'content': m['content'].replace('<image>', '').strip()} for m in ex['messages']]
+
+    cache_dir = None
+    if config.cache_preprocessed_images:
+        cache_dir = config.images_path / ".cache"
+        cache_dir.mkdir(exist_ok=True)
+
     for ex in tqdm(data, desc="Preprocessing images"):
-        img = Image.open(config.images_path / ex['images'][0]).convert('RGB')
+        image_filename = ex['images'][0]
+        cached_image_path = None
+        if cache_dir:
+            cached_image_path = cache_dir / f"{Path(image_filename).stem}.pt"
+            if cached_image_path.exists():
+                ex['pixel_values'] = torch.load(cached_image_path)
+                continue
+
+        img = Image.open(config.images_path / image_filename).convert('RGB')
         if img.size != (384, 384): img = img.resize((384, 384), Image.LANCZOS)
-        ex['pixel_values'] = TVF.pil_to_tensor(img)
+        pixel_values = TVF.pil_to_tensor(img)
+        ex['pixel_values'] = pixel_values
+        
+        if cached_image_path:
+            torch.save(pixel_values, cached_image_path)
+
     random.shuffle(data)
     test_ex, train_ex = data[:config.test_size], data[config.test_size:]
     train_ds = ImageDataset(train_ex, tokenizer, model_config.image_token_index, model_config.image_seq_length)
@@ -249,6 +269,7 @@ def run_training(config: Config):
 @click.option('--grad-scaler-init', default=2**16, type=float, help="Initial scale for gradient scaler.")
 @click.option('--text-model-dtype', default="bfloat16", type=str, help="Dtype for the text model.")
 @click.option('--pre-test/--no-pre-test', default=True, help="Run a validation loop before training. (Currently no-op)")
+@click.option('--cache-preprocessed-images/--no-cache-preprocessed-images', default=False, help="Cache preprocessed images to disk.")
 @click.option('--lora-r', default=64, type=int, help="LoRA r.")
 @click.option('--lora-alpha', default=64, type=int, help="LoRA alpha.")
 @click.option('--lora-dropout', default=0.0, type=float, help="LoRA dropout.")
