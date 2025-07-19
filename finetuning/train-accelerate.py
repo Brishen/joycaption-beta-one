@@ -188,7 +188,7 @@ class Trainer:
                     self.global_steps += 1
                     self.global_samples += self.config.device_batch_size * self.accelerator.num_processes
                     if self.global_steps % (self.config.save_every // self.config.batch_size) == 0:
-                        accelerator.save_state(self.config.output_dir)
+                        self.accelerator.save_state(self.config.output_dir)
                     if self.global_steps % (self.config.test_every // self.config.batch_size) == 0:
                         self.validate()
 
