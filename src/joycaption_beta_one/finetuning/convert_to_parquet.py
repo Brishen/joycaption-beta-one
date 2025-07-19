@@ -52,7 +52,7 @@ def convert_from_dirs(images_dir: Path, captions_dir: Path, output_file: Path):
 
         caption = caption_path.read_text().strip()
         messages = [
-            {"role": "user", "content": "<image>"},
+            {"role": "user", "content": "<image>\nWrite a detailed description for this image."},
             {"role": "assistant", "content": caption},
         ]
 
@@ -72,10 +72,10 @@ def convert_from_dataset_json(dataset_json: Path, images_dir: Path, output_file:
         image_filename = ex["images"][0]
         image_path = images_dir / image_filename
         ex["pixel_values"] = preprocess_image(image_path)
-        ex["messages"] = [
-            {**m, "content": m["content"].replace("<image>", "").strip()}
-            for m in ex["messages"]
-        ]
+        for m in ex["messages"]:
+            if m["role"] == "user":
+                if m["content"].replace("<image>", "").strip() == "":
+                    m["content"] = "<image>\nWrite a detailed description for this image."
     save_to_parquet(data, output_file)
 
 
@@ -93,10 +93,10 @@ def convert_from_cache(cache_dir: Path, dataset_json: Path, output_file: Path):
             continue
         
         ex["pixel_values"] = torch.load(cached_image_path)
-        ex["messages"] = [
-            {**m, "content": m["content"].replace("<image>", "").strip()}
-            for m in ex["messages"]
-        ]
+        for m in ex["messages"]:
+            if m["role"] == "user":
+                if m["content"].replace("<image>", "").strip() == "":
+                    m["content"] = "<image>\nWrite a detailed description for this image."
         processed_data.append(ex)
 
     save_to_parquet(processed_data, output_file)
