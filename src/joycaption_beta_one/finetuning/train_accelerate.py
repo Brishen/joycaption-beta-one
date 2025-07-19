@@ -61,7 +61,6 @@ class Config:
     grad_scaler_init: float = 2**16
     text_model_dtype: str = "bfloat16"
     pre_test: bool = True
-    cache_preprocessed_images: bool = False
     lora_r: int = 64
     lora_alpha: int = 64
     lora_dropout: float = 0.0
@@ -115,15 +114,9 @@ class ImageDataset(Dataset):
 
 def build_datasets_and_loaders(config, tokenizer, model_config, accelerator):
     # load and preprocess data
-    cache_file = None
-    if config.cache_preprocessed_images:
-        cache_dir = config.images_path / ".cache"
-        cache_dir.mkdir(exist_ok=True)
-        cache_file = cache_dir / "preprocessed.parquet"
-
-    if cache_file and cache_file.exists():
-        tqdm.write("Loading cached preprocessed data from parquet file...")
-        table = pq.read_table(cache_file)
+    if Path(config.dataset).suffix == ".parquet":
+        tqdm.write("Loading preprocessed data from parquet file...")
+        table = pq.read_table(config.dataset)
         data = table.to_pylist()
         for ex in tqdm(data, desc="Deserializing tensors"):
             buffer = io.BytesIO(ex['pixel_values'])
@@ -139,19 +132,6 @@ def build_datasets_and_loaders(config, tokenizer, model_config, accelerator):
             if img.size != (384, 384): img = img.resize((384, 384), Image.LANCZOS)
             pixel_values = TVF.pil_to_tensor(img)
             ex['pixel_values'] = pixel_values
-        
-        if cache_file:
-            tqdm.write("Saving preprocessed data to parquet file...")
-            data_to_save = []
-            for ex in tqdm(data, desc="Serializing tensors"):
-                new_ex = ex.copy()
-                buffer = io.BytesIO()
-                torch.save(new_ex['pixel_values'], buffer)
-                new_ex['pixel_values'] = buffer.getvalue()
-                data_to_save.append(new_ex)
-            
-            table = pa.Table.from_pylist(data_to_save)
-            pq.write_table(table, cache_file)
 
     random.shuffle(data)
     test_ex, train_ex = data[:config.test_size], data[config.test_size:]
@@ -276,7 +256,7 @@ def run_training(config: Config):
 @click.option('--adam-eps', default=1e-8, type=float, help="AdamW epsilon.")
 @click.option('--adam-weight-decay', default=0.0, type=float, help="AdamW weight decay.")
 @click.option('--clip-grad-norm', default=1.0, type=float, help="Clip gradient norm. Use 0 to disable.")
-@click.option('--dataset', default="/mnt/truenas/training/girls/wurh6ly55zoe1/dataset.json", type=str, help="Path to the dataset JSON file.")
+@click.option('--dataset', default="/mnt/truenas/training/girls/wurh6ly55zoe1/dataset.json", type=str, help="Path to the dataset JSON file or a preprocessed .parquet file.")
 @click.option('--images-path', default="/mnt/truenas/training/girls/wurh6ly55zoe1", type=click.Path(file_okay=False, path_type=Path), help="Path to the images directory.")
 @click.option('--finetune', default="fancyfeast/llama-joycaption-beta-one-hf-llava", type=str, help="Model to finetune.")
 @click.option('--gradient-checkpointing/--no-gradient-checkpointing', default=True, help="Enable gradient checkpointing.")
@@ -284,7 +264,6 @@ def run_training(config: Config):
 @click.option('--grad-scaler-init', default=2**16, type=float, help="Initial scale for gradient scaler.")
 @click.option('--text-model-dtype', default="bfloat16", type=str, help="Dtype for the text model.")
 @click.option('--pre-test/--no-pre-test', default=True, help="Run a validation loop before training. (Currently no-op)")
-@click.option('--cache-preprocessed-images/--no-cache-preprocessed-images', default=False, help="Cache preprocessed images to disk.")
 @click.option('--lora-r', default=64, type=int, help="LoRA r.")
 @click.option('--lora-alpha', default=64, type=int, help="LoRA alpha.")
 @click.option('--lora-dropout', default=0.0, type=float, help="LoRA dropout.")
