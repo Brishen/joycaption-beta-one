@@ -215,13 +215,12 @@ class Trainer:
         if wandb.run:
             wandb.watch(self.model)
 
+        progress_bar = tqdm(range(self.total_steps), desc="training")
         for epoch in range(self.num_epochs):
             self.logger.info(f"Starting epoch {epoch+1}/{self.num_epochs}")
-            progress_bar = tqdm(self.train_loader, desc=f"train epoch {epoch+1}")
-            for step, batch in enumerate(progress_bar):
+            for step, batch in enumerate(self.train_loader):
                 with self.accelerator.accumulate(self.model):
                     loss = self.run_model(batch)
-                    progress_bar.set_postfix(loss=f"{loss.item():.4f}")
                     self.accelerator.backward(loss)
                     if self.accelerator.sync_gradients:
                         if self.config.clip_grad_norm:
@@ -231,6 +230,8 @@ class Trainer:
                         self.optimizer.zero_grad()
                         self.global_steps += 1
                         self.global_samples += self.config.device_batch_size * self.accelerator.num_processes
+                        progress_bar.update(1)
+                        progress_bar.set_postfix(loss=f"{loss.item():.4f}")
 
             self.logger.info(f"Epoch {epoch+1} finished. Saving checkpoint.")
             unwrapped_model = self.accelerator.unwrap_model(self.model)
