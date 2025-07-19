@@ -181,7 +181,7 @@ class Trainer:
         labels = batch['labels'].to(self.accelerator.device)
         outputs = self.model(input_ids=input_ids[:, :-1], pixel_values=pixel, attention_mask=mask[:, :-1], use_cache=False)
         logits = outputs.logits.reshape(-1, outputs.logits.size(-1))
-        loss = F.cross_entropy(logits, labels.reshape(-1), reduction='mean')
+        loss = F.cross_entropy(logits, labels[:, 1:].reshape(-1), reduction='mean')
         return loss
 
     def train(self):
