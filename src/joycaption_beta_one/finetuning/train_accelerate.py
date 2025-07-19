@@ -166,23 +166,26 @@ class Trainer:
         self.optimizer = torch.optim.AdamW(optim_params, lr=config.learning_rate, betas=(config.adam_beta1, config.adam_beta2), eps=config.adam_eps, weight_decay=config.adam_weight_decay)
         # datasets
         train_loader, test_loader, train_set_size = build_datasets_and_loaders(config, tokenizer, model.config, accelerator)
-        # scheduler steps
+        # determine num_epochs
         if config.num_epochs:
             self.num_epochs = config.num_epochs
         else:
             self.num_epochs = math.ceil(config.max_samples / train_set_size)
+        # prepare model, optimizer, dataloaders
+        self.model, self.optimizer, self.train_loader, self.test_loader = accelerator.prepare(
+            self.model, self.optimizer, train_loader, test_loader
+        )
+        # scheduler steps, now using prepared dataloader
         grad_accum_steps = config.batch_size // (config.device_batch_size * accelerator.num_processes)
-        steps_per_epoch = len(train_loader) // grad_accum_steps
+        steps_per_epoch = len(self.train_loader) // grad_accum_steps
         total_steps = self.num_epochs * steps_per_epoch
         self.total_steps = total_steps
         num_warmup = math.ceil(config.warmup_samples / config.batch_size)
         if config.lr_scheduler_type == "cosine":
-            self.lr_scheduler = get_cosine_schedule_with_warmup(self.optimizer, num_warmup_steps=num_warmup, num_training_steps=total_steps, min_lr_ratio=config.min_lr_ratio)
+            lr_scheduler = get_cosine_schedule_with_warmup(self.optimizer, num_warmup_steps=num_warmup, num_training_steps=total_steps, min_lr_ratio=config.min_lr_ratio)
         else:
-            self.lr_scheduler = get_scheduler(config.lr_scheduler_type, self.optimizer, num_warmup_steps=num_warmup, num_training_steps=total_steps)
-        # prepare with accelerate
-        self.model, self.optimizer, train_loader, test_loader, self.lr_scheduler = accelerator.prepare(self.model, self.optimizer, train_loader, test_loader, self.lr_scheduler)
-        self.train_loader, self.test_loader = train_loader, test_loader
+            lr_scheduler = get_scheduler(config.lr_scheduler_type, self.optimizer, num_warmup_steps=num_warmup, num_training_steps=total_steps)
+        self.lr_scheduler = accelerator.prepare(lr_scheduler)
         self.scaler = torch.cuda.amp.GradScaler(enabled=config.grad_scaler, init_scale=config.grad_scaler_init)
         self.global_steps = 0
         self.global_samples = 0
