@@ -205,9 +205,11 @@ class Trainer:
 
         for epoch in range(self.num_epochs):
             self.logger.info(f"Starting epoch {epoch+1}/{self.num_epochs}")
-            for step, batch in enumerate(tqdm(self.train_loader, desc=f"train epoch {epoch+1}")):
+            progress_bar = tqdm(self.train_loader, desc=f"train epoch {epoch+1}")
+            for step, batch in enumerate(progress_bar):
                 with self.accelerator.accumulate(self.model):
                     loss = self.run_model(batch)
+                    progress_bar.set_postfix(loss=f"{loss.item():.4f}")
                     self.accelerator.backward(loss)
                     if self.accelerator.sync_gradients:
                         if self.config.clip_grad_norm:
