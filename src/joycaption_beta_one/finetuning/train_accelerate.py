@@ -53,8 +53,8 @@ class Config:
     adam_eps: float = 1e-8
     adam_weight_decay: float = 0.00
     clip_grad_norm: Optional[float] = 1.0
-    dataset: str = "/mnt/truenas/training/girls/wurh6ly55zoe1/dataset.json"
-    images_path: Path = Path("/mnt/truenas/training/girls/wurh6ly55zoe1")
+    dataset: str = "dataset.json"
+    images_path: Path = Path(".")
     finetune: str = "fancyfeast/llama-joycaption-beta-one-hf-llava"
     gradient_checkpointing: bool = True
     test_size: int = 128
@@ -256,8 +256,8 @@ def run_training(config: Config):
 @click.option('--adam-eps', default=1e-8, type=float, help="AdamW epsilon.")
 @click.option('--adam-weight-decay', default=0.0, type=float, help="AdamW weight decay.")
 @click.option('--clip-grad-norm', default=1.0, type=float, help="Clip gradient norm. Use 0 to disable.")
-@click.option('--dataset', default="/mnt/truenas/training/girls/wurh6ly55zoe1/dataset.json", type=str, help="Path to the dataset JSON file or a preprocessed .parquet file.")
-@click.option('--images-path', default="/mnt/truenas/training/girls/wurh6ly55zoe1", type=click.Path(file_okay=False, path_type=Path), help="Path to the images directory.")
+@click.option('--dataset', default="dataset.json", type=str, help="Path to the dataset JSON file or a preprocessed .parquet file.")
+@click.option('--images-path', default=".", type=click.Path(file_okay=False, path_type=Path), help="Path to the images directory.")
 @click.option('--finetune', default="fancyfeast/llama-joycaption-beta-one-hf-llava", type=str, help="Model to finetune.")
 @click.option('--gradient-checkpointing/--no-gradient-checkpointing', default=True, help="Enable gradient checkpointing.")
 @click.option('--test-size', default=128, type=int, help="Number of samples for the test set.")
