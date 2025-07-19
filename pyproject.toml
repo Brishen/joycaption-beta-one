@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "joycaption-beta-one"
 version = "0.1.0"
@@ -20,6 +24,3 @@ dependencies = [
 
 [project.scripts]
 train-accelerate = "finetuning.train_accelerate:main"
-
-[tool.setuptools.packages.find]
-where = ["src"]
