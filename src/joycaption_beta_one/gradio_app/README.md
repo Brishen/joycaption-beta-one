@@ -17,7 +17,7 @@ This is a simple Gradio GUI for the JoyCaption model.
 1. Clone this repository:
    ```bash
    git clone https://github.com/yourusername/joy-caption.git
-   cd joy-caption/gradio-app
+   cd joy-caption
    ```
 
 2. Set up a Python virtual environment (optional but recommended):
@@ -26,14 +26,14 @@ This is a simple Gradio GUI for the JoyCaption model.
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. Install the required dependencies:
+3. Install the package in editable mode with the `app` extras:
    ```bash
-   pip install -r requirements.txt
+   pip install -e .[app]
    ```
 
 4. Run the application:
    ```bash
-   python app.py
+   joycaption-app
    ```
 
 5. Open your web browser and navigate to the URL displayed in the terminal (typically http://127.0.0.1:7860)

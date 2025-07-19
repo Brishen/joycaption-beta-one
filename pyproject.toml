@@ -26,6 +26,15 @@ dependencies = [
 
 [project.scripts]
 train-accelerate = "joycaption_beta_one.finetuning.train_accelerate:main"
+joycaption-app = "joycaption_beta_one.gradio_app.app:main"
+
+[project.optional-dependencies]
+app = [
+    "huggingface_hub >= 0.30.1",
+    "sentencepiece",
+    "liger-kernel >= 0.5.9",
+    "gradio >= 5.24.0",
+]
 
 [tool.hatch.build]
 packages = ["src/joycaption_beta_one"]

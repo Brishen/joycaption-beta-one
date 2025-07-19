@@ -804,6 +804,10 @@ with gr.Blocks() as demo:
 	)
 
 
-if __name__ == "__main__":
+def main():
 	print_system_info()
 	demo.launch()
+
+
+if __name__ == "__main__":
+	main()
