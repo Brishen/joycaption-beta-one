@@ -17,3 +17,6 @@ dependencies = [
     "wandb>=0.21.0",
     "click>=8.1.7",
 ]
+
+[tool.setuptools]
+packages = ["finetuning"]
