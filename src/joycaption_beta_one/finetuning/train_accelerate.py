@@ -233,7 +233,10 @@ class Trainer:
                         self.global_samples += self.config.device_batch_size * self.accelerator.num_processes
 
             self.logger.info(f"Epoch {epoch+1} finished. Saving checkpoint.")
-            self.accelerator.save_state(self.config.output_dir / f"epoch_{epoch+1}")
+            unwrapped_model = self.accelerator.unwrap_model(self.model)
+            save_path = self.config.output_dir / f"epoch_{epoch+1}"
+            unwrapped_model.save_pretrained(save_path)
+            self.tokenizer.save_pretrained(save_path)
             self.validate()
 
     @torch.no_grad()
