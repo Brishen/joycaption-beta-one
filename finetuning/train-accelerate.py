@@ -18,10 +18,11 @@ from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 import wandb
 import omegaconf
+import click
 
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast, LlavaForConditionalGeneration, get_scheduler
 from peft import LoraConfig, get_peft_model, TaskType
-from utils import parse_args_into_config, get_cosine_schedule_with_warmup, temprngstate, log_rank_0
+from utils import get_cosine_schedule_with_warmup, temprngstate, log_rank_0
 from accelerate import Accelerator
 
 DTYPE_MAP = {'float16': torch.float16, 'float32': torch.float32, 'bfloat16': torch.bfloat16}
@@ -203,13 +204,50 @@ class Trainer:
         wandb.log({"eval/loss": avg, "global_steps": self.global_steps})
         self.model.train()
 
-if __name__ == "__main__":
+@click.command()
+@click.option('--output-dir', default="checkpoints", type=click.Path(file_okay=False, path_type=Path), help="Output directory for checkpoints.")
+@click.option('--wandb-project', default=None, type=str, help="Wandb project name.")
+@click.option('--device-batch-size', default=1, type=int, help="Batch size per device.")
+@click.option('--batch-size', default=32, type=int, help="Total batch size.")
+@click.option('--learning-rate', default=5e-5, type=float, help="Learning rate.")
+@click.option('--warmup-samples', default=0, type=int, help="Number of warmup samples.")
+@click.option('--max-samples', default=400000, type=int, help="Maximum number of samples to train on.")
+@click.option('--save-every', default=50000, type=int, help="Save checkpoint every N samples.")
+@click.option('--test-every', default=50000, type=int, help="Run validation every N samples.")
+@click.option('--grad-scaler', is_flag=True, default=False, help="Use gradient scaler.")
+@click.option('--lr-scheduler-type', default="cosine", type=str, help="Learning rate scheduler type.")
+@click.option('--min-lr-ratio', default=0.0, type=float, help="Minimum learning rate ratio for cosine scheduler.")
+@click.option('--allow-tf32/--no-allow-tf32', default=True, help="Allow TF32 for matmuls.")
+@click.option('--seed', default=42, type=int, help="Random seed.")
+@click.option('--num-workers', default=2, type=int, help="Number of dataloader workers.")
+@click.option('--optimizer-type', default="adamw", type=str, help="Optimizer type.")
+@click.option('--adam-beta1', default=0.9, type=float, help="AdamW beta1.")
+@click.option('--adam-beta2', default=0.999, type=float, help="AdamW beta2.")
+@click.option('--adam-eps', default=1e-8, type=float, help="AdamW epsilon.")
+@click.option('--adam-weight-decay', default=0.0, type=float, help="AdamW weight decay.")
+@click.option('--clip-grad-norm', default=1.0, type=float, help="Clip gradient norm. Use 0 to disable.")
+@click.option('--dataset', default="/mnt/truenas/training/girls/wurh6ly55zoe1/dataset.json", type=str, help="Path to the dataset JSON file.")
+@click.option('--images-path', default="/mnt/truenas/training/girls/wurh6ly55zoe1", type=click.Path(file_okay=False, path_type=Path), help="Path to the images directory.")
+@click.option('--finetune', default="fancyfeast/llama-joycaption-beta-one-hf-llava", type=str, help="Model to finetune.")
+@click.option('--gradient-checkpointing/--no-gradient-checkpointing', default=True, help="Enable gradient checkpointing.")
+@click.option('--test-size', default=128, type=int, help="Number of samples for the test set.")
+@click.option('--grad-scaler-init', default=2**16, type=float, help="Initial scale for gradient scaler.")
+@click.option('--text-model-dtype', default="bfloat16", type=str, help="Dtype for the text model.")
+@click.option('--pre-test/--no-pre-test', default=True, help="Run a validation loop before training. (Currently no-op)")
+@click.option('--lora-r', default=64, type=int, help="LoRA r.")
+@click.option('--lora-alpha', default=64, type=int, help="LoRA alpha.")
+@click.option('--lora-dropout', default=0.0, type=float, help="LoRA dropout.")
+def main(**kwargs):
+    """Fine-tunes a model with Accelerate."""
     # Logging
     logging.basicConfig(format='%(asctime)s [%(levelname)s] - %(message)s', level=logging.INFO)
     logger = logging.getLogger(__name__)
-    # Parse args & init
-    config = parse_args_into_config(Config, logger)
+    # Create config from CLI args
+    config = Config(**kwargs)
     wandb.init(project=config.wandb_project, config=omegaconf.OmegaConf.to_container(config, resolve=True))
     accelerator = Accelerator()
     trainer = Trainer(config, accelerator, logger)
     trainer.train()
+
+if __name__ == "__main__":
+    main()
