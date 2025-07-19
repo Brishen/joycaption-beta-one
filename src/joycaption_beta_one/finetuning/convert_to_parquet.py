@@ -107,7 +107,7 @@ def convert_from_cache(cache_dir: Path, dataset_json: Path, output_file: Path):
 @click.option("--captions-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), help="Path to the directory of caption files.")
 @click.option("--dataset-json", type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Path to the dataset.json file.")
 @click.option("--cache-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), help="Path to the .cache directory with .pt files.")
-@click.option("--output-file", type=click.Path(dir_okay=False, path_type=Path), required=True, help="Path to the output Parquet file.")
+@click.option("--output-file", type=click.Path(dir_okay=False, path_type=Path), required=True, help="Path to the output Parquet file (e.g. preprocessed.parquet).")
 def main(images_dir, captions_dir, dataset_json, cache_dir, output_file):
     """Converts image datasets to Parquet format for faster loading."""
     if cache_dir:
