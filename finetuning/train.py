@@ -61,8 +61,8 @@ class Config:
 
 	clip_grad_norm: Optional[float] = 1.0                # Clip gradient norm
 
-	dataset: str = "your_dataset.json"                   # Dataset path (parquet)
-	images_path: Path = Path("../data/resized-384-squish")   # Images path
+	dataset: str = "/mnt/truenas/training/girls/wurh6ly55zoe1/dataset.json"                   # Dataset path (parquet)
+	images_path: Path = Path("/mnt/truenas/training/girls/wurh6ly55zoe1")   # Images path
 	finetune: str = "fancyfeast/llama-joycaption-beta-one-hf-llava"   # Model to finetune from
 	gradient_checkpointing: bool = True                  # Use gradient checkpointing
 	test_size: int = 128                                 # Test size
@@ -655,7 +655,25 @@ class BetterDistributedSampler(DistributedSampler):
 
 
 if __name__ == "__main__":
-	distributed_setup()
-	torch.cuda.set_device(distributed_rank())
-	main()
-	distributed_cleanup()
+	torch.cuda.set_device(0)
+	logger = logging.getLogger("SingleProcess")
+	logging.basicConfig(format='%(asctime)s [%(name)s] [%(levelname)s] [%(funcName)s] - %(message)s')
+	logger.setLevel(logging.INFO)
+
+	config = parse_args_into_config(Config, logger)
+	if config is None:
+		exit(0)
+
+	wc = omegaconf.OmegaConf.to_container(config, resolve=True)
+	assert isinstance(wc, dict)
+	w = wandb.init(config=wc, project=config.wandb_project)
+	assert w is not None
+	with w:
+		assert wandb.run is not None
+		if wandb.run.resumed and config.resume is None:
+			raise NotImplementedError("Resuming from a checkpoint is not yet supported")
+
+		logger.info("Starting training...")
+		trainer = MainTrainer(config=config, run_id=wandb.run.id, logger=logger)
+		trainer.train()
+
