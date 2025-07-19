@@ -243,7 +243,7 @@ def main(**kwargs):
     logging.basicConfig(format='%(asctime)s [%(levelname)s] - %(message)s', level=logging.INFO)
     logger = logging.getLogger(__name__)
     # Create config from CLI args
-    config = Config(**kwargs)
+    config = omegaconf.OmegaConf.structured(Config(**kwargs))
     wandb.init(project=config.wandb_project, config=omegaconf.OmegaConf.to_container(config, resolve=True))
     accelerator = Accelerator()
     trainer = Trainer(config, accelerator, logger)
