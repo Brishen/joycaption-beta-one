@@ -18,5 +18,8 @@ dependencies = [
     "click>=8.1.7",
 ]
 
+[project.scripts]
+train-accelerate = "finetuning.train-accelerate:main"
+
 [tool.setuptools]
 packages = ["finetuning"]
