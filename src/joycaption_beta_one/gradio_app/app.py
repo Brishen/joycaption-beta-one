@@ -305,8 +305,24 @@ def load_model(quant: str, lora_path: str, status: gr.HTML | None = None):
 		torch.cuda.empty_cache()
 
 		try:
+			# Determine what to load
+			model_load_path = MODEL_PATH
+			lora_adapter_path = None
+			if lora_path:
+				lora_path = lora_path.strip()
+				if lora_path:
+					if (Path(lora_path) / "adapter_config.json").exists():
+						lora_adapter_path = lora_path
+					else:
+						print(f"LoRA path '{lora_path}' does not look like an adapter, treating as a full model path.")
+						model_load_path = lora_path
+
+			print(f"Loading base model from {model_load_path}...")
+			if status is not None:
+				yield {status: format_info(f"Loading base model from {model_load_path}...")}
+
 			if quant == "bf16":
-				base_model = LlavaForConditionalGeneration.from_pretrained(MODEL_PATH, torch_dtype="bfloat16", device_map=0)
+				base_model = LlavaForConditionalGeneration.from_pretrained(model_load_path, torch_dtype="bfloat16", device_map=0)
 				assert isinstance(base_model, LlavaForConditionalGeneration), f"Expected LlavaForConditionalGeneration, got {type(base_model)}"
 				apply_liger_kernel_to_llama(model=base_model.language_model)  # Meow
 			else:
@@ -327,24 +343,22 @@ def load_model(quant: str, lora_path: str, status: gr.HTML | None = None):
 				else:
 					raise ValueError(f"Unknown quantization type: {quant}")
 				
-				base_model = LlavaForConditionalGeneration.from_pretrained(MODEL_PATH, torch_dtype="auto", device_map=0, quantization_config=qnt_config)
+				base_model = LlavaForConditionalGeneration.from_pretrained(model_load_path, torch_dtype="auto", device_map=0, quantization_config=qnt_config)
 				assert isinstance(base_model, LlavaForConditionalGeneration), f"Expected LlavaForConditionalGeneration, got {type(base_model)}"
 
-			if lora_path:
-				lora_path = lora_path.strip()
-				if lora_path:
-					print(f"Applying LoRA from {lora_path}...")
-					if status is not None:
-						yield {status: format_info(f"Applying LoRA from {lora_path}...")}
-					
-					peft_config = PeftConfig.from_pretrained(lora_path)
-					# The old format uses a list of module names, the new one uses a regex string.
-					if not isinstance(peft_config.target_modules, str):
-						print("Old LoRA format detected, applying fix for target_modules...")
-						peft_config.target_modules = r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)"
+			if lora_adapter_path:
+				print(f"Applying LoRA from {lora_adapter_path}...")
+				if status is not None:
+					yield {status: format_info(f"Applying LoRA from {lora_adapter_path}...")}
+				
+				peft_config = PeftConfig.from_pretrained(lora_adapter_path)
+				# The old format uses a list of module names, the new one uses a regex string.
+				if not isinstance(peft_config.target_modules, str):
+					print("Old LoRA format detected, applying fix for target_modules...")
+					peft_config.target_modules = r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)"
 
-					base_model = PeftModel.from_pretrained(base_model, lora_path, config=peft_config)
-					print("LoRA applied.")
+				base_model = PeftModel.from_pretrained(base_model, lora_adapter_path, config=peft_config)
+				print("LoRA applied.")
 
 			g_model = base_model
 			g_model.eval()
