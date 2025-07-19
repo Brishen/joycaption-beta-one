@@ -174,7 +174,8 @@ class Trainer:
         torch.manual_seed(self.config.seed)
         np.random.seed(self.config.seed)
         self.logger.info("Starting training...")
-        wandb.watch(self.model)
+        if wandb.run:
+            wandb.watch(self.model)
         for step, batch in enumerate(tqdm(self.train_loader, desc="train")):
             with self.accelerator.accumulate(self.model):
                 loss = self.run_model(batch)
@@ -201,8 +202,22 @@ class Trainer:
             total_loss += loss.item()
         avg = total_loss / len(self.test_loader)
         self.logger.info(f"Validation loss: {avg}")
-        wandb.log({"eval/loss": avg, "global_steps": self.global_steps})
+        if wandb.run:
+            wandb.log({"eval/loss": avg, "global_steps": self.global_steps})
         self.model.train()
+
+def run_training(config: Config):
+    """Fine-tunes a model with Accelerate, callable from notebooks."""
+    # Logging
+    logging.basicConfig(format='%(asctime)s [%(levelname)s] - %(message)s', level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
+    if config.wandb_project:
+        wandb.init(project=config.wandb_project, config=omegaconf.OmegaConf.to_container(config, resolve=True))
+    
+    accelerator = Accelerator()
+    trainer = Trainer(config, accelerator, logger)
+    trainer.train()
 
 @click.command()
 @click.option('--output-dir', default="checkpoints", type=click.Path(file_okay=False, path_type=Path), help="Output directory for checkpoints.")
@@ -239,15 +254,8 @@ class Trainer:
 @click.option('--lora-dropout', default=0.0, type=float, help="LoRA dropout.")
 def main(**kwargs):
     """Fine-tunes a model with Accelerate."""
-    # Logging
-    logging.basicConfig(format='%(asctime)s [%(levelname)s] - %(message)s', level=logging.INFO)
-    logger = logging.getLogger(__name__)
-    # Create config from CLI args
     config = omegaconf.OmegaConf.structured(Config(**kwargs))
-    wandb.init(project=config.wandb_project, config=omegaconf.OmegaConf.to_container(config, resolve=True))
-    accelerator = Accelerator()
-    trainer = Trainer(config, accelerator, logger)
-    trainer.train()
+    run_training(config)
 
 if __name__ == "__main__":
     main()
