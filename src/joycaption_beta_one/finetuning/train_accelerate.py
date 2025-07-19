@@ -39,6 +39,7 @@ class Config:
     learning_rate: float = 5e-5
     warmup_samples: int = 0
     max_samples: int = 400000
+    num_epochs: Optional[int] = None
     grad_scaler: bool = False
     lr_scheduler_type: str = "cosine"
     min_lr_ratio: float = 0.0
@@ -166,7 +167,10 @@ class Trainer:
         # datasets
         train_loader, test_loader, train_set_size = build_datasets_and_loaders(config, tokenizer, model.config, accelerator)
         # scheduler steps
-        self.num_epochs = math.ceil(config.max_samples / train_set_size)
+        if config.num_epochs:
+            self.num_epochs = config.num_epochs
+        else:
+            self.num_epochs = math.ceil(config.max_samples / train_set_size)
         grad_accum_steps = config.batch_size // (config.device_batch_size * accelerator.num_processes)
         steps_per_epoch = len(train_loader) // grad_accum_steps
         total_steps = self.num_epochs * steps_per_epoch
@@ -262,7 +266,8 @@ def run_training(config: Config):
 @click.option('--batch-size', default=32, type=int, help="Total batch size.")
 @click.option('--learning-rate', default=5e-5, type=float, help="Learning rate.")
 @click.option('--warmup-samples', default=0, type=int, help="Number of warmup samples.")
-@click.option('--max-samples', default=400000, type=int, help="Maximum number of samples to train on.")
+@click.option('--max-samples', default=400000, type=int, help="Maximum number of samples to train on (used if num_epochs is not set).")
+@click.option('--num-epochs', default=None, type=int, help="Maximum number of epochs to train for. Overrides max_samples.")
 @click.option('--grad-scaler', is_flag=True, default=False, help="Use gradient scaler.")
 @click.option('--lr-scheduler-type', default="cosine", type=str, help="Learning rate scheduler type.")
 @click.option('--min-lr-ratio', default=0.0, type=float, help="Minimum learning rate ratio for cosine scheduler.")
