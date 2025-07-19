@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-train-accelerate = "finetuning.train-accelerate:main"
+train-accelerate = "finetuning.train_accelerate:main"
 
 [tool.setuptools]
 packages = ["finetuning"]
