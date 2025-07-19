@@ -170,6 +170,7 @@ class Trainer:
         grad_accum_steps = config.batch_size // (config.device_batch_size * accelerator.num_processes)
         steps_per_epoch = len(train_loader) // grad_accum_steps
         total_steps = self.num_epochs * steps_per_epoch
+        self.total_steps = total_steps
         num_warmup = math.ceil(config.warmup_samples / config.batch_size)
         if config.lr_scheduler_type == "cosine":
             self.lr_scheduler = get_cosine_schedule_with_warmup(self.optimizer, num_warmup_steps=num_warmup, num_training_steps=total_steps, min_lr_ratio=config.min_lr_ratio)
@@ -198,10 +199,14 @@ class Trainer:
         torch.manual_seed(self.config.seed)
         np.random.seed(self.config.seed)
         self.logger.info("Starting training...")
+        self.logger.info(f"  Output dir: {self.config.output_dir}")
+        self.logger.info(f"  Num epochs: {self.num_epochs}")
+        self.logger.info(f"  Total steps: {self.total_steps}")
+        self.logger.info(f"  Batch size: {self.config.batch_size}")
+        self.logger.info(f"  Device batch size: {self.config.device_batch_size}")
+        self.logger.info(f"  Learning rate: {self.config.learning_rate}")
         if wandb.run:
             wandb.watch(self.model)
-        
-        self.logger.info(f"Training for {self.num_epochs} epochs.")
 
         for epoch in range(self.num_epochs):
             self.logger.info(f"Starting epoch {epoch+1}/{self.num_epochs}")
