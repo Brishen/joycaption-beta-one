@@ -338,7 +338,8 @@ def load_model(quant: str, lora_path: str, status: gr.HTML | None = None):
 						yield {status: format_info(f"Applying LoRA from {lora_path}...")}
 					
 					peft_config = PeftConfig.from_pretrained(lora_path)
-					if isinstance(peft_config.target_modules, list):
+					# The old format uses a list of module names, the new one uses a regex string.
+					if not isinstance(peft_config.target_modules, str):
 						print("Old LoRA format detected, applying fix for target_modules...")
 						peft_config.target_modules = r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)"
 
