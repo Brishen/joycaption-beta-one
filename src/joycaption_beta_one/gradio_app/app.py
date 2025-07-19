@@ -19,7 +19,7 @@ from textwrap import indent
 import sys
 import socket
 import time
-from peft import PeftModel
+from peft import PeftModel, PeftConfig
 
 
 
@@ -336,7 +336,13 @@ def load_model(quant: str, lora_path: str, status: gr.HTML | None = None):
 					print(f"Applying LoRA from {lora_path}...")
 					if status is not None:
 						yield {status: format_info(f"Applying LoRA from {lora_path}...")}
-					base_model = PeftModel.from_pretrained(base_model, lora_path)
+					
+					peft_config = PeftConfig.from_pretrained(lora_path)
+					if isinstance(peft_config.target_modules, list):
+						print("Old LoRA format detected, applying fix for target_modules...")
+						peft_config.target_modules = r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)"
+
+					base_model = PeftModel.from_pretrained(base_model, lora_path, config=peft_config)
 					print("LoRA applied.")
 
 			g_model = base_model

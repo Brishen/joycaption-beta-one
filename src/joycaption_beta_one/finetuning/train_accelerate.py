@@ -159,7 +159,15 @@ class Trainer:
         tokenizer = AutoTokenizer.from_pretrained(config.finetune, use_fast=True)
         model = LlavaForConditionalGeneration.from_pretrained(config.finetune, torch_dtype=DTYPE_MAP[config.text_model_dtype])
         if config.gradient_checkpointing: model.gradient_checkpointing_enable()
-        lora_cfg = LoraConfig(task_type=TaskType.CAUSAL_LM, inference_mode=False, r=config.lora_r, lora_alpha=config.lora_alpha, lora_dropout=config.lora_dropout, target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"], bias="none")
+        lora_cfg = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            inference_mode=False,
+            r=config.lora_r,
+            lora_alpha=config.lora_alpha,
+            lora_dropout=config.lora_dropout,
+            target_modules=r".*language_model.*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)",
+            bias="none"
+        )
         model = get_peft_model(model, lora_cfg)
         self.tokenizer, self.model = tokenizer, model
         # optimizer
