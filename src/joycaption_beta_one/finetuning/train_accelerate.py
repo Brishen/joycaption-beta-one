@@ -256,7 +256,7 @@ class Trainer:
 def run_training(config: Config):
     """Fine-tunes a model with Accelerate, callable from notebooks."""
     # Logging
-    logging.basicConfig(format='%(asctime)s [%(levelname)s] - %(message)s', level=logging.INFO)
+    logging.basicConfig(format='%(asctime)s [%(levelname)s] - %(message)s', level=logging.INFO, force=True)
     logger = logging.getLogger(__name__)
     
     if config.wandb_project:
