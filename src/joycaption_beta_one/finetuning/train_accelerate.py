@@ -176,8 +176,7 @@ class Trainer:
             self.model, self.optimizer, train_loader, test_loader
         )
         # scheduler steps, now using prepared dataloader
-        grad_accum_steps = config.batch_size // (config.device_batch_size * accelerator.num_processes)
-        steps_per_epoch = len(self.train_loader) // grad_accum_steps
+        steps_per_epoch = math.ceil(train_set_size / config.batch_size)
         total_steps = self.num_epochs * steps_per_epoch
         self.total_steps = total_steps
         num_warmup = math.ceil(config.warmup_samples / config.batch_size)
