@@ -7,6 +7,7 @@ import math
 import random
 import json
 import io
+import os
 
 import torch
 import torch.nn as nn
@@ -27,7 +28,6 @@ from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizer
 from peft import LoraConfig, get_peft_model, TaskType
 from .utils import get_cosine_schedule_with_warmup, temprngstate, log_rank_0
 from accelerate import Accelerator
-from accelerate.state import AcceleratorState
 
 DTYPE_MAP = {'float16': torch.float16, 'float32': torch.float32, 'bfloat16': torch.bfloat16}
 
@@ -266,10 +266,10 @@ def run_training(config: Config):
     if config.wandb_project:
         wandb.init(project=config.wandb_project, config=omegaconf.OmegaConf.to_container(config, resolve=True))
     
-    state = AcceleratorState()
-    grad_accum_steps = config.batch_size // (config.device_batch_size * state.num_processes)
-    if config.batch_size % (config.device_batch_size * state.num_processes) != 0:
-        raise ValueError(f"batch_size ({config.batch_size}) must be divisible by device_batch_size ({config.device_batch_size}) * num_processes ({state.num_processes})")
+    num_processes = int(os.environ.get("WORLD_SIZE", 1))
+    grad_accum_steps = config.batch_size // (config.device_batch_size * num_processes)
+    if config.batch_size % (config.device_batch_size * num_processes) != 0:
+        raise ValueError(f"batch_size ({config.batch_size}) must be divisible by device_batch_size ({config.device_batch_size}) * num_processes ({num_processes})")
 
     accelerator = Accelerator(gradient_accumulation_steps=grad_accum_steps)
     trainer = Trainer(config, accelerator, logger)
