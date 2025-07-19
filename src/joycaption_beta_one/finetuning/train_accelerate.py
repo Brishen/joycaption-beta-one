@@ -241,11 +241,10 @@ class Trainer:
                         progress_bar.update(1)
                         progress_bar.set_postfix(loss=f"{loss.item():.4f}")
 
-            self.logger.info(f"Epoch {epoch+1} finished. Saving checkpoint by merging weights.")
+            self.logger.info(f"Epoch {epoch+1} finished. Saving LoRA adapter.")
             unwrapped_model = self.accelerator.unwrap_model(self.model)
-            merged_model = unwrapped_model.merge_and_unload()
             save_path = self.config.output_dir / f"epoch_{epoch+1}"
-            merged_model.save_pretrained(save_path)
+            unwrapped_model.save_pretrained(save_path)
             self.tokenizer.save_pretrained(save_path)
             self.validate()
             if self.global_steps >= self.total_steps:
